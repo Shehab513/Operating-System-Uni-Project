@@ -82,19 +82,30 @@ int main() {
                 display_board(state.board);
             }
             else if (strcmp(msg_ptr, "PROMPT") == 0) {
-                int pos;
                 printf("Your turn! Enter position (1-9): ");
-                scanf("%d", &pos);
-
-                char sendbuf[20];
-                sprintf(sendbuf, "MOVE:%d\n", pos); // Added \n
-                send(sock, sendbuf, strlen(sendbuf), 0);
+                
+                char input[64];
+                if (fgets(input, sizeof(input), stdin) != NULL) {
+                    int pos = atoi(input);
+                    char sendbuf[64];
+                    sprintf(sendbuf, "MOVE:%d\n", pos);
+                    send(sock, sendbuf, strlen(sendbuf), 0);
+                }
             }
             else if (strcmp(msg_ptr, "WAIT") == 0) {
                 printf("Waiting for opponent...\n");
             }
             else if (strcmp(msg_ptr, "INVALID") == 0) {
                 printf("Invalid move! Try again.\n");
+                printf("Enter position (1-9): ");
+                
+                char input[64];
+                if (fgets(input, sizeof(input), stdin) != NULL) {
+                    int pos = atoi(input);
+                    char sendbuf[64];
+                    sprintf(sendbuf, "MOVE:%d\n", pos);
+                    send(sock, sendbuf, strlen(sendbuf), 0);
+                }
             }
             else if (strncmp(msg_ptr, "WINNER:", 7) == 0) {
                 printf("\n=== GAME OVER ===\n");
@@ -105,11 +116,15 @@ int main() {
                 else
                     printf("You lost.\n");
 
-                goto end_game; // Break out of nested loop
+                printf("Starting next game in 3 seconds...\n");
+                sleep(3);
+                // Continue loop to receive new BOARD
             }
             else if (strcmp(msg_ptr, "DRAW") == 0) {
                 printf("\n=== GAME OVER ===\nDraw!\n");
-                goto end_game;
+                printf("Starting next game in 3 seconds...\n");
+                sleep(3);
+                // Continue loop
             }
             else if (strcmp(msg_ptr, "DISCONNECT") == 0) {
                 printf("Opponent disconnected.\n");

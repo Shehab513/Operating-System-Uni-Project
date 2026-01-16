@@ -135,61 +135,69 @@ int main() {
     send(game.client_sockets[0], "SYMBOL:X\n", 9, 0);
     send(game.client_sockets[1], "SYMBOL:O\n", 9, 0);
 
-    /* Initialize game */
-    init_board(&game);
-    game.current_player = 0;
-    game.game_over = 0;
+    /* Main Server Loop - Multiple Games */
+    while (1) {
+        printf("Starting new game...\n");
 
-    broadcast_board(&game);
-    send_prompt(&game);
+        /* Initialize game */
+        init_board(&game);
+        game.current_player = 0;
+        game.game_over = 0;
 
-    /* Game Loop */
-    while (!game.game_over) {
-        int p = game.current_player;
-        char buffer[256] = {0};
+        broadcast_board(&game);
+        send_prompt(&game);
 
-        int val = read(game.client_sockets[p], buffer, 256);
-        if (val <= 0) {
-            printf("Player %s disconnected!\n", game.names[p]);
-            send(game.client_sockets[1 - p], "DISCONNECT\n", 11, 0);
-            break;
+        /* Game Logic Loop */
+        while (!game.game_over) {
+            int p = game.current_player;
+            char buffer[256] = {0};
+
+            int val = read(game.client_sockets[p], buffer, 256);
+            if (val <= 0) {
+                printf("Player %s disconnected!\n", game.names[p]);
+                send(game.client_sockets[1 - p], "DISCONNECT\n", 11, 0);
+                goto end_server;
+            }
+
+            if (strncmp(buffer, "MOVE:", 5) == 0) {
+                int pos = atoi(buffer + 5) - 1;
+
+                if (pos < 0 || pos > 8 || game.board[pos] != ' ') {
+                    send(game.client_sockets[p], "INVALID\n", 8, 0);
+                    continue;
+                }
+
+                game.board[pos] = game.symbols[p];
+                log_move(game.names[p], game.symbols[p], pos);
+                broadcast_board(&game);
+
+                int w = check_winner(&game);
+                if (w != -1) {
+                    char msg[64];
+                    sprintf(msg, "WINNER:%s\n", game.names[w]);
+                    send(game.client_sockets[0], msg, strlen(msg), 0);
+                    send(game.client_sockets[1], msg, strlen(msg), 0);
+
+                    log_winner(game.names[w], game.symbols[w]);
+                    game.game_over = 1; // Break inner loop
+                }
+                else if (check_draw(&game)) {
+                    send(game.client_sockets[0], "DRAW\n", 5, 0);
+                    send(game.client_sockets[1], "DRAW\n", 5, 0);
+
+                    log_draw();
+                    game.game_over = 1; // Break inner loop
+                }
+                else {
+                    game.current_player = 1 - game.current_player;
+                    send_prompt(&game);
+                }
+            }
         }
-
-        if (strncmp(buffer, "MOVE:", 5) == 0) {
-            int pos = atoi(buffer + 5) - 1;
-
-            if (pos < 0 || pos > 8 || game.board[pos] != ' ') {
-                send(game.client_sockets[p], "INVALID\n", 8, 0);
-                continue;
-            }
-
-            game.board[pos] = game.symbols[p];
-            log_move(game.names[p], game.symbols[p], pos);
-            broadcast_board(&game);
-
-            int w = check_winner(&game);
-            if (w != -1) {
-                char msg[64];
-                sprintf(msg, "WINNER:%s\n", game.names[w]);
-                send(game.client_sockets[0], msg, strlen(msg), 0);
-                send(game.client_sockets[1], msg, strlen(msg), 0);
-
-                log_winner(game.names[w], game.symbols[w]);
-                break;
-            }
-
-            if (check_draw(&game)) {
-                send(game.client_sockets[0], "DRAW\n", 5, 0);
-                send(game.client_sockets[1], "DRAW\n", 5, 0);
-
-                log_draw();
-                break;
-            }
-
-            game.current_player = 1 - game.current_player;
-            send_prompt(&game);
-        }
+        // Game Over: Loop back to "Starting new game..."
     }
+
+end_server:
 
     close(game.client_sockets[0]);
     close(game.client_sockets[1]);
